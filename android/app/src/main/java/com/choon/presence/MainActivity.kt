@@ -174,17 +174,60 @@ class MainActivity : ComponentActivity() {
                         store.mergeGapMinutes = gapText.toIntOrNull() ?: PresenceStore.DEFAULT_GAP_MIN
                         refresh++
                     }) { Text("저장") }
-                    OutlinedButton(onClick = {
-                        startActivity(Intent.createChooser(
-                            Intent(Intent.ACTION_SEND).setType("text/plain")
-                                .putExtra(Intent.EXTRA_TEXT, Diag.report(this@MainActivity, store) + "\n== 재실 이벤트 ==\n" + exportCsv(events)),
-                            "진단 로그 내보내기"))
-                    }) { Text("진단 로그 내보내기") }
                     OutlinedButton(onClick = { store.clear(); refresh++ }) { Text("기록 삭제") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                    OutlinedButton(onClick = { share("재실 기록 내보내기", exportPresence(events, now)) }) {
+                        Text("재실 기록 내보내기")
+                    }
+                    OutlinedButton(onClick = {
+                        share("진단 로그 내보내기", Diag.report(this@MainActivity, store))
+                    }) { Text("진단 로그 내보내기") }
                 }
                 Spacer(Modifier.height(32.dp))
             }
         }
+    }
+
+    private fun share(title: String, text: String) {
+        startActivity(Intent.createChooser(
+            Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), title))
+    }
+
+    /** 일별 요약 + 세션 + 원본 이벤트를 CSV 형태의 텍스트로 만든다. */
+    private fun exportPresence(events: List<PresenceEvent>, now: Long): String {
+        val zone = ZoneId.systemDefault()
+        val sessions = SessionCalculator.buildSessions(
+            events, now,
+            if (WifiMonitorService.running) now else store.lastAliveMillis + PresenceStore.ALIVE_GRACE_MILLIS,
+            store.mergeGapMinutes * 60_000L,
+        )
+        val iso = DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone(zone)
+        val hm = DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
+        fun t(ms: Long?) = ms?.let { hm.format(Instant.ofEpochMilli(it)) } ?: ""
+        val sb = StringBuilder()
+        sb.appendLine("# 일별 요약 (합치기 기준 ${store.mergeGapMinutes}분, SSID ${store.targetSsid})")
+        sb.appendLine("date,total_minutes,first_enter,last_exit,sessions")
+        val first = events.firstOrNull()?.let { SessionCalculator.today(it.timeMillis, zone) }
+        if (first != null) {
+            var d: java.time.LocalDate = first
+            val today = SessionCalculator.today(now, zone)
+            while (!d.isAfter(today)) {
+                val sum = SessionCalculator.summarize(sessions, d, zone)
+                sb.appendLine("$d,${sum.totalMillis / 60_000},${t(sum.firstEnterMillis)},${t(sum.lastExitMillis)},${sum.sessions.size}")
+                d = d.plusDays(1)
+            }
+        }
+        sb.appendLine()
+        sb.appendLine("# 세션 (짧은 끊김 합친 결과)")
+        sb.appendLine("start,end,minutes,open")
+        sessions.forEach {
+            sb.appendLine("${iso.format(Instant.ofEpochMilli(it.startMillis))},${iso.format(Instant.ofEpochMilli(it.endMillis))},${it.durationMillis / 60_000},${it.open}")
+        }
+        sb.appendLine()
+        sb.appendLine("# 원본 이벤트")
+        sb.append(exportCsv(events))
+        return sb.toString()
     }
 
     private fun exportCsv(events: List<PresenceEvent>): String {
