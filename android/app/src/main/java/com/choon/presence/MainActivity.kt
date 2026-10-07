@@ -88,7 +88,9 @@ class MainActivity : ComponentActivity() {
         val events = remember(now, refresh) { store.events() }
         val gapMs = store.mergeGapMinutes * 60_000L
         val sessions = SessionCalculator.buildSessions(
-            events, now, store.lastAliveMillis + PresenceStore.ALIVE_GRACE_MILLIS, gapMs
+            events, now,
+            if (WifiMonitorService.running) now else store.lastAliveMillis + PresenceStore.ALIVE_GRACE_MILLIS,
+            gapMs
         )
         val today = SessionCalculator.today(now, zone)
         val days = (0..6).map { SessionCalculator.summarize(sessions, today.minusDays(it.toLong()), zone) }
@@ -167,6 +169,7 @@ class MainActivity : ComponentActivity() {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                     Button(onClick = {
                         store.targetSsid = ssidText
+                        startServiceIfPermitted()
                         store.mergeGapMinutes = gapText.toIntOrNull() ?: PresenceStore.DEFAULT_GAP_MIN
                         refresh++
                     }) { Text("저장") }

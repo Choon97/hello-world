@@ -25,12 +25,19 @@ class WifiMonitorService : Service() {
     private lateinit var store: PresenceStore
     private lateinit var cm: ConnectivityManager
     private val handler = Handler(Looper.getMainLooper())
+    private lateinit var target: String   // 신호 변화마다 prefs 를 읽지 않도록 캐시
 
     private val heartbeat = object : Runnable {
         override fun run() {
-            store.lastAliveMillis = System.currentTimeMillis()
-            handler.postDelayed(this, 60_000L)
+            store.touchAlive()
+            handler.postDelayed(this, PresenceStore.HEARTBEAT_MILLIS)
         }
+    }
+
+    private var unreadable: Boolean? = null
+
+    private fun setUnreadable(v: Boolean) {
+        if (unreadable != v) { unreadable = v; store.ssidUnreadable = v }
     }
 
     // FLAG_INCLUDE_LOCATION_INFO: Android 12+ 에서 콜백으로 SSID 를 받으려면 필요
@@ -39,11 +46,12 @@ class WifiMonitorService : Service() {
             val info = caps.transportInfo as? WifiInfo ?: return
             val ssid = info.ssid?.trim('"')
             if (ssid == null || ssid == WifiManager_UNKNOWN_SSID || ssid.isEmpty()) {
-                store.ssidUnreadable = true   // 권한 부족 등: 상태는 건드리지 않는다
+                setUnreadable(true)   // 권한 부족 등: 상태는 건드리지 않는다
                 return
             }
-            store.ssidUnreadable = false
-            if (ssid == store.targetSsid) store.record(EventType.ENTER)
+            setUnreadable(false)
+            store.touchAlive()
+            if (ssid == target) store.record(EventType.ENTER)
             else store.record(EventType.EXIT)
         }
 
@@ -55,6 +63,8 @@ class WifiMonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         store = PresenceStore(this)
+        target = store.targetSsid
+        running = true
         cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         startForegroundCompat()
         // 서비스가 죽어 있던 동안 열려 있던 세션은 마지막 생존 시각에서 닫는다
@@ -71,9 +81,13 @@ class WifiMonitorService : Service() {
         )
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        target = store.targetSsid   // 설정 저장 후 start() 가 다시 불리면 새 SSID 반영
+        return START_STICKY
+    }
 
     override fun onDestroy() {
+        running = false
         handler.removeCallbacks(heartbeat)
         runCatching { cm.unregisterNetworkCallback(callback) }
         super.onDestroy()
@@ -100,6 +114,10 @@ class WifiMonitorService : Service() {
     }
 
     companion object {
+        /** 서비스와 화면은 같은 프로세스이므로 이 값으로 서비스 생존 여부를 정확히 알 수 있다. */
+        @Volatile var running = false
+            private set
+
         private const val CHANNEL_ID = "presence"
         private const val WifiManager_UNKNOWN_SSID = "<unknown ssid>"
 
