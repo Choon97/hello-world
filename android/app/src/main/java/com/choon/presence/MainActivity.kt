@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = PresenceStore(this)
+        Diag.init(this)
         setContent { MaterialTheme { Screen() } }
     }
 
@@ -176,8 +177,9 @@ class MainActivity : ComponentActivity() {
                     OutlinedButton(onClick = {
                         startActivity(Intent.createChooser(
                             Intent(Intent.ACTION_SEND).setType("text/plain")
-                                .putExtra(Intent.EXTRA_TEXT, exportCsv(events)), "이벤트 로그 내보내기"))
-                    }) { Text("로그 내보내기") }
+                                .putExtra(Intent.EXTRA_TEXT, Diag.report(this@MainActivity, store) + "\n== 재실 이벤트 ==\n" + exportCsv(events)),
+                            "진단 로그 내보내기"))
+                    }) { Text("진단 로그 내보내기") }
                     OutlinedButton(onClick = { store.clear(); refresh++ }) { Text("기록 삭제") }
                 }
                 Spacer(Modifier.height(32.dp))

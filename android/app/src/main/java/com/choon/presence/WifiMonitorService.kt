@@ -30,6 +30,8 @@ class WifiMonitorService : Service() {
     private val heartbeat = object : Runnable {
         override fun run() {
             store.touchAlive()
+            Diag.count(Diag.C.BEATS)
+            Diag.flush(this@WifiMonitorService)
             handler.postDelayed(this, PresenceStore.HEARTBEAT_MILLIS)
         }
     }
@@ -43,26 +45,32 @@ class WifiMonitorService : Service() {
     // FLAG_INCLUDE_LOCATION_INFO: Android 12+ 에서 콜백으로 SSID 를 받으려면 필요
     private val callback = object : ConnectivityManager.NetworkCallback(FLAG_INCLUDE_LOCATION_INFO) {
         override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+            Diag.count(Diag.C.CAPS)
             val info = caps.transportInfo as? WifiInfo ?: return
             val ssid = info.ssid?.trim('"')
             if (ssid == null || ssid == WifiManager_UNKNOWN_SSID || ssid.isEmpty()) {
+                Diag.count(Diag.C.UNREADABLE)
                 setUnreadable(true)   // 권한 부족 등: 상태는 건드리지 않는다
                 return
             }
             setUnreadable(false)
             store.touchAlive()
-            if (ssid == target) store.record(EventType.ENTER)
-            else store.record(EventType.EXIT)
+            val changed = if (ssid == target) store.record(EventType.ENTER) else store.record(EventType.EXIT)
+            if (changed) Diag.count(Diag.C.CHANGES)
         }
 
         override fun onLost(network: Network) {
-            store.record(EventType.EXIT)
+            Diag.count(Diag.C.LOST)
+            if (store.record(EventType.EXIT)) Diag.count(Diag.C.CHANGES)
         }
     }
 
     override fun onCreate() {
         super.onCreate()
         store = PresenceStore(this)
+        Diag.init(this)
+        Diag.logProcessExits(this)
+        Diag.event("SERVICE_CREATE", "isHome=${store.isHome()}")
         target = store.targetSsid
         running = true
         cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -88,6 +96,8 @@ class WifiMonitorService : Service() {
 
     override fun onDestroy() {
         running = false
+        Diag.event("SERVICE_DESTROY")
+        Diag.flush(this)
         handler.removeCallbacks(heartbeat)
         runCatching { cm.unregisterNetworkCallback(callback) }
         super.onDestroy()

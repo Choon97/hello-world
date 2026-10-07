@@ -53,11 +53,12 @@ class PresenceStore(context: Context) {
      * 현재 상태와 같은 이벤트는 기록하지 않는다.
      * 신호 세기 변화마다 호출되므로 마지막 상태를 메모리에 캐시해서 파일을 매번 읽지 않는다.
      */
-    fun record(type: EventType, timeMillis: Long = System.currentTimeMillis()) = synchronized(LOCK) {
+    fun record(type: EventType, timeMillis: Long = System.currentTimeMillis()): Boolean = synchronized(LOCK) {
         val last = lastType()
-        if (last == type || (last == null && type == EventType.EXIT)) return
+        if (last == type || (last == null && type == EventType.EXIT)) return false
         logFile.appendText("$timeMillis,${if (type == EventType.ENTER) "E" else "X"}\n")
         cachedLast = type
+        true
     }
 
     fun clear() = synchronized(LOCK) {
