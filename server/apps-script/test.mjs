@@ -29,22 +29,28 @@ function makeSheet(name, formats) {
   };
 }
 
-function makeEnv() {
-  const sheets = {}; const formats = {};
+function makeEnv(opts = {}) {
+  const sheets = {}; const formats = {}; const opened = [];
+  const ssObj = {
+    getSheetByName: (n) => sheets[n] || null,
+    insertSheet: (n) => (sheets[n] = makeSheet(n, formats)),
+  };
+  const code = opts.spreadsheetId
+    ? src.replace("const SPREADSHEET_ID = '';", `const SPREADSHEET_ID = '${opts.spreadsheetId}';`) : src;
   const ctx = {
-    SpreadsheetApp: { getActiveSpreadsheet: () => ({
-      getSheetByName: (n) => sheets[n] || null,
-      insertSheet: (n) => (sheets[n] = makeSheet(n, formats)),
-    }) },
+    SpreadsheetApp: {
+      getActiveSpreadsheet: () => (opts.standalone ? null : ssObj),   // 독립 프로젝트면 null
+      openById: (id) => { opened.push(id); return ssObj; },
+    },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (t) => ({ text: t, setMimeType() { return this; } }) },
     JSON, Date, String, Number, Math,
   };
-  vm.createContext(ctx); vm.runInContext(src, ctx);
+  vm.createContext(ctx); vm.runInContext(code, ctx);
   const post = (payload, token = TOKEN, body) => JSON.parse(ctx.doPost({
     parameter: token === null ? {} : { token }, postData: { contents: body ?? J(payload) },
   }).text);
-  return { sheets, formats, post, ctx };
+  return { sheets, formats, post, ctx, opened };
 }
 
 const payload = (over = {}) => ({
@@ -132,6 +138,19 @@ t('잘못된 입력은 거부', () => {
   assert.equal(post(payload({ totalMinutes: '9' })).ok, false);
   assert.equal(post(null, TOKEN, '{bad').ok, false);
   assert.equal(Object.keys(sheets).length, 0);
+});
+t('시트에 연결 안 된 독립 프로젝트 + SPREADSHEET_ID 없음: 원인을 알려주며 거부', () => {
+  const { sheets, post } = makeEnv({ standalone: true });
+  const r = post(payload());
+  assert.equal(r.ok, false);
+  assert.ok(r.error.includes('SPREADSHEET_ID'), r.error);
+  assert.equal(Object.keys(sheets).length, 0);
+});
+t('독립 프로젝트 + SPREADSHEET_ID 지정: openById 로 열어 정상 저장', () => {
+  const { sheets, post, opened } = makeEnv({ standalone: true, spreadsheetId: 'ID123' });
+  assert.deepEqual(post(payload()), { ok: true });
+  assert.equal(J(opened), J(['ID123']));
+  assert.equal(sheets['일별'].rows.length, 2);
 });
 t('setup(): 요약 수식과 설명 탭을 만들고, 기존 시트1 은 건드리지 않는다', () => {
   const { sheets, ctx } = makeEnv();

@@ -15,6 +15,12 @@
 // (Apps Script 는 요청 헤더를 읽을 수 없어서 주소의 파라미터로 확인한다.)
 const TOKEN = 'CHANGE_ME_TO_A_LONG_RANDOM_STRING';
 
+// 이 스크립트를 시트의 [확장 프로그램 > Apps Script] 로 열었다면 비워 두어도 된다.
+// script.google.com 에서 따로 만든 프로젝트라면(시트와 연결 안 됨) 시트 주소의 ID 를 넣는다.
+//   https://docs.google.com/spreadsheets/d/여기가_ID/edit
+// ('웹에 게시'용 주소의 2PACX- 로 시작하는 값이 아니라, 편집 화면 주소의 /d/ 와 /edit 사이 값)
+const SPREADSHEET_ID = '';
+
 const DAILY = '일별';
 const SESSIONS = '세션';
 const SUMMARY = '요약';
@@ -40,7 +46,7 @@ function doPost(e) {
     const lock = LockService.getScriptLock();
     lock.waitLock(20000);
     try {
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const ss = getSpreadsheet_();
       upsertDaily_(getSheet_(ss, DAILY, DAILY_HEADERS, ['A:A', 'F:G']), d);
       replaceSessions_(getSheet_(ss, SESSIONS, SESSION_HEADERS, ['A:A', 'C:D']), d);
     } finally {
@@ -62,7 +68,7 @@ function doGet() {
  * 실행하지 않아도 첫 전송 때 '일별', '세션' 탭은 자동으로 만들어진다.
  */
 function setup() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet_();
   getSheet_(ss, DAILY, DAILY_HEADERS, ['A:A', 'F:G']);
   getSheet_(ss, SESSIONS, SESSION_HEADERS, ['A:A', 'C:D']);
 
@@ -88,6 +94,14 @@ function setup() {
     ['공통', '-', '앱이 하루가 끝난 뒤 어제 기록을 보내므로 오늘 날짜는 아직 없음. 같은 날짜가 다시 오면 덮어씀'],
   ];
   guide.getRange(1, 1, rows.length, 3).setValues(rows);
+}
+
+function getSpreadsheet_() {
+  const ss = SPREADSHEET_ID ? SpreadsheetApp.openById(SPREADSHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error('스크립트가 시트에 연결되어 있지 않습니다. 코드 맨 위 SPREADSHEET_ID 에 시트 편집 주소의 ID 를 넣고 다시 배포하세요');
+  }
+  return ss;
 }
 
 function getSheet_(ss, name, headers, textRanges) {
