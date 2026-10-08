@@ -40,9 +40,10 @@ object Uploader {
         val now = System.currentTimeMillis()
         val events = store.events()
         val firstDay = events.firstOrNull()?.let { SessionCalculator.today(it.timeMillis, zone) } ?: return
-        val today = SessionCalculator.today(now, zone)
-        val start = maxOf(store.uploadedThrough + 1, firstDay.toEpochDay(), today.toEpochDay() - MAX_BACKFILL_DAYS)
-        if (start >= today.toEpochDay()) {
+        // 매일 00:15 이후에만 어제까지 보낸다 (자정을 걸친 세션/짧은 끊김이 정리된 뒤)
+        val endExclusive = UploadSchedule.lastEligibleDay(now, zone).toEpochDay() + 1
+        val start = maxOf(store.uploadedThrough + 1, firstDay.toEpochDay(), endExclusive - 1 - MAX_BACKFILL_DAYS)
+        if (start >= endExclusive) {
             if (store.lastUploadStatus.isEmpty()) status(store, now, "대기 중 (전송할 지난 날짜 없음)")
             return
         }
@@ -55,7 +56,7 @@ object Uploader {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
         }.getOrNull() ?: "?"
         var sent = 0
-        for (epochDay in start until today.toEpochDay()) {
+        for (epochDay in start until endExclusive) {
             val date = LocalDate.ofEpochDay(epochDay)
             val body = PayloadBuilder.build(
                 store.participantId, SessionCalculator.summarize(sessions, date, zone),

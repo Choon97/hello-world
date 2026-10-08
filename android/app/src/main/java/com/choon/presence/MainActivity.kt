@@ -172,7 +172,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text("서버 자동 전송 (선택)", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
-                Text("하루가 끝나면 어제 재실 요약(날짜·총 시간·세션)을 보냅니다. 와이파이 이름은 보내지 않아요.")
+                Text("매일 00:15 전후에 어제 재실 요약(날짜·총 시간·세션)을 보냅니다. 와이파이 이름은 보내지 않아요.")
                 OutlinedTextField(
                     value = urlText, onValueChange = { urlText = it; urlError = null },
                     label = { Text("서버 주소 (https://...)") }, singleLine = true,

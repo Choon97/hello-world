@@ -20,8 +20,8 @@ android {
         applicationId = "com.choon.presence"
         minSdk = 29
         targetSdk = 34
-        versionCode = 7
-        versionName = "0.3.1"
+        versionCode = 8
+        versionName = "0.3.2"
     }
 
     val storePath = signingValue("storeFile", "SIGNING_STORE_FILE")

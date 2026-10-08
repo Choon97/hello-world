@@ -83,6 +83,7 @@ class WifiMonitorService : Service() {
         ) {
             store.record(EventType.EXIT, last)
         }
+        UploadAlarmReceiver.schedule(this)   // 매일 00:15 전송 알람
         handler.post(heartbeat)   // 첫 하트비트가 곧바로 전송도 시도한다
         cm.registerNetworkCallback(
             NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(),

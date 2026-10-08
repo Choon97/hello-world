@@ -31,6 +31,10 @@
             android:foregroundServiceType="location" />
 
         <receiver
+            android:name=".UploadAlarmReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".BootReceiver"
             android:exported="true">
             <intent-filter>
