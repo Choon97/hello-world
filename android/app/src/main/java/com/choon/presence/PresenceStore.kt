@@ -88,6 +88,18 @@ class PresenceStore(context: Context) {
         cacheLoaded = true
     }
 
+    /** 보관 기간(최근 7일+경계 하루) 밖의 이벤트를 지운다. 현재 집에 있는 상태는 유지된다. */
+    fun prune(nowMillis: Long = System.currentTimeMillis()) = synchronized(LOCK) {
+        val events = readEvents()
+        val pruned = EventPruner.prune(events, EventPruner.cutoffMillis(nowMillis, java.time.ZoneId.systemDefault()))
+        if (pruned == events) return
+        val tmp = File(logFile.parentFile, "events.csv.tmp")
+        tmp.writeText(pruned.joinToString("") { "${it.timeMillis},${if (it.type == EventType.ENTER) "E" else "X"}\n" })
+        if (!tmp.renameTo(logFile)) { logFile.delete(); tmp.renameTo(logFile) }
+        cachedLast = pruned.lastOrNull()?.type
+        cacheLoaded = true
+    }
+
     private fun lastType(): EventType? {
         if (!cacheLoaded) {
             cachedLast = readEvents().lastOrNull()?.type

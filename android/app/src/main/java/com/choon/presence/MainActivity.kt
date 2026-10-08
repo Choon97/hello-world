@@ -161,6 +161,7 @@ class MainActivity : ComponentActivity() {
 
             item {
                 Text("설정", style = MaterialTheme.typography.titleMedium)
+                Text("기기에는 최근 7일 기록만 보관해요. 그보다 오래된 기록은 자동으로 지워지며, 서버로 보낸 기록은 시트에 남아요.")
                 OutlinedTextField(
                     value = ssidText, onValueChange = { ssidText = it },
                     label = { Text("집 와이파이 이름 (SSID)") }, singleLine = true,
@@ -222,7 +223,7 @@ class MainActivity : ComponentActivity() {
                     onClick = { Uploader.maybeUpload(this@MainActivity, manual = true) },
                     enabled = Uploader.isConfigured(store),
                     modifier = Modifier.padding(top = 8.dp),
-                ) { Text("서버로 지금 전송 (오늘 포함)") }
+                ) { Text("서버로 지금 전송 (최근 7일)") }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                     OutlinedButton(onClick = { share("재실 기록 내보내기", exportPresence(events, now)) }) {
                         Text("재실 기록 내보내기")

@@ -10,13 +10,15 @@ data class PlannedDay(val date: LocalDate, val partial: Boolean)
 
 object UploadSchedule {
     val RUN_AT: LocalTime = LocalTime.of(0, 15)
-    const val MAX_BACKFILL_DAYS = 14L
-    const val MANUAL_WINDOW_DAYS = 30L
+    /** 자동 전송이 따라잡는 최대 일수 (어제부터 5일 더 = 6일 전까지). 기기 보관 경계 하루를 피한다. */
+    const val MAX_BACKFILL_DAYS = 5L
+    /** 수동 전송 범위: 오늘 포함 최근 7일 (오늘 + 6일 전까지). */
+    const val MANUAL_WINDOW_DAYS = 6L
 
     /**
      * 이번에 보낼 날짜 목록.
      * - 자동: 아직 안 보낸 날부터 "보내도 되는 마지막 날"(00:15 이후 어제)까지, 최대 [MAX_BACKFILL_DAYS]일 전부터. 전부 확정값.
-     * - 수동: 최근 [MANUAL_WINDOW_DAYS]일 전체를 오늘(진행 중)까지 다시 보낸다. 확정 전 날짜는 partial.
+     * - 수동: 오늘 포함 최근 7일을 오늘(진행 중)까지 다시 보낸다. 확정 전 날짜는 partial.
      *   서버는 같은 (날짜, 참여자)를 덮어쓰므로 여러 번 보내도 안전하다.
      */
     fun plan(firstDay: LocalDate, uploadedThrough: Long, nowMillis: Long, zone: ZoneId, manual: Boolean): List<PlannedDay> {

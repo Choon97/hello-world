@@ -30,10 +30,22 @@ class WifiMonitorService : Service() {
     private val heartbeat = object : Runnable {
         override fun run() {
             store.touchAlive()
+            pruneOncePerDay()
             Diag.count(Diag.C.BEATS)
             Diag.flush(this@WifiMonitorService)
             Uploader.maybeUpload(this@WifiMonitorService)
             handler.postDelayed(this, PresenceStore.HEARTBEAT_MILLIS)
+        }
+    }
+
+    private var lastPruneDay = -1L
+
+    /** 하루에 한 번만 오래된 기록을 정리한다 (5분 하트비트마다 파일을 건드리지 않음). */
+    private fun pruneOncePerDay() {
+        val today = java.time.LocalDate.now().toEpochDay()
+        if (today != lastPruneDay) {
+            lastPruneDay = today
+            store.prune()
         }
     }
 

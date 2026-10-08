@@ -160,10 +160,15 @@ object Diag {
         runCatching { file.appendText(line + "\n") }
     }
 
+    /** 진단 로그도 최근 7일만 보관한다. */
     private fun trim() {
         runCatching {
-            if (file.exists() && file.length() > 200_000) {
-                file.writeText(file.readLines().takeLast(1000).joinToString("\n") + "\n")
+            if (!file.exists()) return
+            val cutoff = System.currentTimeMillis() - 7 * 24 * HOUR
+            val lines = file.readLines()
+            val kept = lines.filter { l -> l.split(',').getOrNull(1)?.toLongOrNull()?.let { it >= cutoff } ?: false }
+            if (kept.size != lines.size || file.length() > 200_000) {
+                file.writeText(kept.takeLast(1000).joinToString("\n") + if (kept.isEmpty()) "" else "\n")
             }
         }
     }

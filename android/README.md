@@ -10,6 +10,9 @@
 
 기본 SSID 는 `skyiptime5g0651` 이고 앱 안에서 바꿀 수 있다. 와이파이 비밀번호는 앱이 필요로 하지 않으며 저장하지도 않는다.
 
+## 데이터 보관
+기기에는 최근 7일(+경계 하루) 이벤트만 보관하며 하루에 한 번 오래된 기록을 지운다. 진단 로그도 7일. 장기 보관은 서버(시트)에서 한다.
+
 ## 설치
 - GitHub Actions → `Android APK` 실행 결과의 `wifi-presence-debug-apk` 아티팩트에서 `app-debug.apk` 를 받아 폰에 설치 (출처를 알 수 없는 앱 허용 필요), 또는
 - 로컬 빌드: `ANDROID_HOME=<sdk 경로> ./gradlew :app:assembleDebug`

@@ -53,10 +53,10 @@ class UploadScheduleTest {
         assertEquals(emptyList<PlannedDay>(), plan)
     }
 
-    @Test fun autoBackfillIsLimitedTo14Days() {
+    @Test fun autoBackfillIsLimitedToSixDaysBack() {
         val plan = UploadSchedule.plan(LocalDate.of(2026, 1, 1), -1L, ms(2026, 10, 8, 9, 0), zone, manual = false)
-        assertEquals(15, plan.size)                      // 14일 전 ~ 어제
-        assertEquals("2026-09-23", plan.first().date.toString())
+        assertEquals(6, plan.size)                       // 6일 전 ~ 어제 (기기 보관 경계 하루는 제외)
+        assertEquals("2026-10-02", plan.first().date.toString())
         assertEquals("2026-10-07", plan.last().date.toString())
     }
 
@@ -65,7 +65,7 @@ class UploadScheduleTest {
         assertEquals("2026-10-08", dates(plan).last())
         assertEquals(true, plan.last().partial)
         assertEquals(false, plan.first { it.date == LocalDate.of(2026, 10, 7) }.partial)
-        assertEquals(8, plan.size)                       // 10/1 ~ 10/8
+        assertEquals(7, plan.size)                       // 10/2 ~ 10/8 (오늘 포함 7일)
     }
 
     @Test fun manualBefore0015MarksYesterdayPartialToo() {
@@ -79,9 +79,10 @@ class UploadScheduleTest {
         assertEquals(listOf("2026-10-08"), dates(plan))
     }
 
-    @Test fun manualWindowIs30Days() {
+    @Test fun manualWindowIsLast7DaysIncludingToday() {
         val plan = UploadSchedule.plan(LocalDate.of(2026, 1, 1), -1L, ms(2026, 10, 8, 9, 0), zone, manual = true)
-        assertEquals(31, plan.size)
-        assertEquals("2026-09-08", plan.first().date.toString())
+        assertEquals(7, plan.size)
+        assertEquals("2026-10-02", plan.first().date.toString())
+        assertEquals("2026-10-08", plan.last().date.toString())
     }
 }
