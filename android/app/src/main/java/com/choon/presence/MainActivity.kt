@@ -66,10 +66,8 @@ class MainActivity : ComponentActivity() {
         var bgOk by remember { mutableStateOf(granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION)) }
         var ssidText by remember { mutableStateOf(store.targetSsid) }
         var gapText by remember { mutableStateOf(store.mergeGapMinutes.toString()) }
-        var urlText by remember { mutableStateOf(store.serverUrl) }
         var pidText by remember { mutableStateOf(store.participantId) }
-        var tokenText by remember { mutableStateOf(store.serverToken) }
-        var urlError by remember { mutableStateOf<String?>(null) }
+        var pidError by remember { mutableStateOf<String?>(null) }
 
         LaunchedEffect(Unit) {
             while (true) {
@@ -173,45 +171,30 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text("서버 자동 전송 (선택)", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
-                Text("매일 00:15 전후에 어제 재실 요약(날짜·총 시간·세션)을 보냅니다. 와이파이 이름은 보내지 않아요.")
+                Text("매일 00:15 전후에 어제 재실 요약(날짜·총 시간·세션)을 연구실 시트로 보냅니다. 와이파이 이름은 보내지 않아요. 서버 주소는 앱에 내장돼 있어요.")
                 OutlinedTextField(
-                    value = urlText, onValueChange = { urlText = it; urlError = null },
-                    label = { Text("서버 주소 (https://...)") }, singleLine = true,
-                    placeholder = { Text("구글 Apps Script 는 주소 끝에 ?token=값") },
-                    isError = urlError != null, supportingText = urlError?.let { { Text(it) } },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = pidText, onValueChange = { pidText = it },
+                    value = pidText, onValueChange = { pidText = it; pidError = null },
                     label = { Text("참여자 ID (이름 대신 코드 권장)") }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = tokenText, onValueChange = { tokenText = it },
-                    label = { Text("인증 토큰 (서버에서 요구하는 경우)") }, singleLine = true,
+                    placeholder = { Text("예: lab-01 (영문/숫자/-/_ 만)") },
+                    isError = pidError != null, supportingText = pidError?.let { { Text(it) } },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 val uploadStatus = store.lastUploadStatus
                 Text(
                     when {
-                        urlText.isBlank() -> "서버 전송: 꺼짐"
+                        !Uploader.hasServer -> "서버 전송: 이 앱에는 서버 주소가 설정되지 않았어요 (배포용 앱을 설치하세요)"
+                        pidText.isBlank() -> "서버 전송: 참여자 ID 를 입력하면 시작돼요"
                         uploadStatus.isNotEmpty() -> "서버 전송 상태: $uploadStatus"
                         else -> "서버 전송: 설정됨, 아직 전송 전"
                     }
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                     Button(onClick = {
-                        if (urlText.isNotBlank() && !urlText.trim().startsWith("https://")) {
-                            urlError = "https:// 로 시작하는 주소만 쓸 수 있어요"
+                        if (pidText.isNotBlank() && !PayloadBuilder.isValidParticipantId(pidText.trim())) {
+                            pidError = "영문/숫자/-/_ 만, 64자 이내로 입력해 주세요"
                             return@Button
                         }
-                        if (urlText.isNotBlank() && pidText.isBlank()) {
-                            urlError = "참여자 ID 를 입력해 주세요"
-                            return@Button
-                        }
-                        store.serverUrl = urlText
                         store.participantId = pidText
-                        store.serverToken = tokenText
                         store.targetSsid = ssidText
                         startServiceIfPermitted()
                         store.mergeGapMinutes = gapText.toIntOrNull() ?: PresenceStore.DEFAULT_GAP_MIN

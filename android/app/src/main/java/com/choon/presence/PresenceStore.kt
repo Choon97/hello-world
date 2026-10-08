@@ -17,14 +17,6 @@ class PresenceStore(context: Context) {
         get() = prefs.getInt(KEY_GAP, DEFAULT_GAP_MIN)
         set(v) = prefs.edit().putInt(KEY_GAP, v.coerceIn(0, 120)).apply()
 
-    var serverUrl: String
-        get() = prefs.getString(KEY_URL, "") ?: ""
-        set(v) = prefs.edit().putString(KEY_URL, v.trim()).apply()
-
-    var serverToken: String
-        get() = prefs.getString(KEY_TOKEN, "") ?: ""
-        set(v) = prefs.edit().putString(KEY_TOKEN, v.trim()).apply()
-
     var participantId: String
         get() = prefs.getString(KEY_PID, "") ?: ""
         set(v) = prefs.edit().putString(KEY_PID, v.trim()).apply()
@@ -111,8 +103,6 @@ class PresenceStore(context: Context) {
     companion object {
         const val DEFAULT_SSID = "skyiptime5g0651"
         const val DEFAULT_GAP_MIN = 10
-        private const val KEY_URL = "server_url"
-        private const val KEY_TOKEN = "server_token"
         private const val KEY_PID = "participant_id"
         private const val KEY_UPLOADED = "uploaded_through"
         private const val KEY_STATUS = "upload_status"

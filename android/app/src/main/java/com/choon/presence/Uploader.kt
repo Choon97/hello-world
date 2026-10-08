@@ -19,8 +19,10 @@ object Uploader {
     private val running = AtomicBoolean(false)
     @Volatile private var nextAttemptAt = 0L
 
-    fun isConfigured(store: PresenceStore) =
-        store.serverUrl.startsWith("https://") && store.participantId.isNotBlank()
+    /** 서버 주소가 앱에 내장돼 있는가 (빌드 시 SERVER_URL). */
+    val hasServer: Boolean get() = BuildConfig.SERVER_URL.startsWith("https://")
+
+    fun isConfigured(store: PresenceStore) = hasServer && PayloadBuilder.isValidParticipantId(store.participantId)
 
     /** [manual] 이면 재시도 대기시간을 무시하고 오늘(진행 중)까지 보낸다 ("지금 전송" 버튼). */
     fun maybeUpload(context: Context, manual: Boolean = false) {
@@ -65,7 +67,7 @@ object Uploader {
                 store.participantId, SessionCalculator.summarize(sessions, date, zone),
                 zone, store.mergeGapMinutes, version, partial = day.partial,
             )
-            val r = HttpUploader.postJson(store.serverUrl, store.serverToken, body)
+            val r = HttpUploader.postJson(BuildConfig.SERVER_URL, null, body)
             if (!r.ok) {
                 Diag.event("UPLOAD_FAIL", "$date $r")
                 nextAttemptAt = System.currentTimeMillis() + RETRY_DELAY_MILLIS

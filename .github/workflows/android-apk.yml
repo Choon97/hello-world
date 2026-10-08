@@ -30,6 +30,8 @@ jobs:
             echo "SIGNING_KEY_PASSWORD=${{ secrets.SIGNING_KEY_PASSWORD }}" >> "$GITHUB_ENV"
           fi
       - run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+        env:
+          SERVER_URL: ${{ secrets.SERVER_URL }}
       - uses: actions/upload-artifact@v4
         with:
           name: wifi-presence-debug-apk

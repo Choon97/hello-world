@@ -41,4 +41,14 @@ class PayloadBuilderTest {
         assertTrue(json.isNull("firstEnter"))
         assertEquals(0, json.getJSONArray("sessions").length())
     }
+
+    @Test fun participantIdValidationMatchesServerRule() {
+        assertTrue(PayloadBuilder.isValidParticipantId("lab-01"))
+        assertTrue(PayloadBuilder.isValidParticipantId("A_b-9"))
+        assertFalse(PayloadBuilder.isValidParticipantId(""))
+        assertFalse(PayloadBuilder.isValidParticipantId("홍길동"))
+        assertFalse(PayloadBuilder.isValidParticipantId("a b"))
+        assertFalse(PayloadBuilder.isValidParticipantId("../x"))
+        assertFalse(PayloadBuilder.isValidParticipantId("a".repeat(65)))
+    }
 }

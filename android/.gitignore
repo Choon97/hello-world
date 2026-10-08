@@ -5,3 +5,4 @@ local.properties
 .idea/
 *.jks
 keystore.properties
+server.properties

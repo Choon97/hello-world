@@ -12,6 +12,15 @@ val keystoreProps = Properties().apply {
 }
 fun signingValue(key: String, env: String): String? = keystoreProps.getProperty(key) ?: System.getenv(env)
 
+// 서버 주소(토큰 포함)는 앱에 고정으로 내장한다. 저장소에는 올리지 않고 server.properties 또는 환경변수 SERVER_URL 에서 읽는다.
+val serverProps = Properties().apply {
+    val f = rootProject.file("server.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val serverUrl: String = (serverProps.getProperty("SERVER_URL") ?: System.getenv("SERVER_URL") ?: "").trim()
+require(serverUrl.isEmpty() || serverUrl.startsWith("https://")) { "SERVER_URL 은 https:// 로 시작해야 합니다" }
+require(!serverUrl.contains('"') && !serverUrl.contains('\\') && !serverUrl.contains(' ')) { "SERVER_URL 에 쓸 수 없는 문자가 있습니다" }
+
 android {
     namespace = "com.choon.presence"
     compileSdk = 34
@@ -20,8 +29,9 @@ android {
         applicationId = "com.choon.presence"
         minSdk = 29
         targetSdk = 34
-        versionCode = 10
-        versionName = "0.3.4"
+        versionCode = 11
+        versionName = "0.4.0"
+        buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
     }
 
     val storePath = signingValue("storeFile", "SIGNING_STORE_FILE")

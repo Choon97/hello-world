@@ -8,6 +8,11 @@ import java.time.format.DateTimeFormatter
 object PayloadBuilder {
     const val SCHEMA = 1
 
+    private val ID_RE = Regex("^[A-Za-z0-9_-]{1,64}$")
+
+    /** 서버(Apps Script / receiver.py)가 받아들이는 참여자 ID 형식. */
+    fun isValidParticipantId(id: String) = ID_RE.matches(id)
+
     fun build(
         participantId: String,
         summary: DaySummary,
