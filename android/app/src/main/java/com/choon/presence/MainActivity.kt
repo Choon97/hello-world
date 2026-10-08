@@ -66,6 +66,10 @@ class MainActivity : ComponentActivity() {
         var bgOk by remember { mutableStateOf(granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION)) }
         var ssidText by remember { mutableStateOf(store.targetSsid) }
         var gapText by remember { mutableStateOf(store.mergeGapMinutes.toString()) }
+        var urlText by remember { mutableStateOf(store.serverUrl) }
+        var pidText by remember { mutableStateOf(store.participantId) }
+        var tokenText by remember { mutableStateOf(store.serverToken) }
+        var urlError by remember { mutableStateOf<String?>(null) }
 
         LaunchedEffect(Unit) {
             while (true) {
@@ -167,15 +171,57 @@ class MainActivity : ComponentActivity() {
                     label = { Text("이 시간(분) 이하로 끊기면 같은 재실로 합치기") }, singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Text("서버 자동 전송 (선택)", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+                Text("하루가 끝나면 어제 재실 요약(날짜·총 시간·세션)을 보냅니다. 와이파이 이름은 보내지 않아요.")
+                OutlinedTextField(
+                    value = urlText, onValueChange = { urlText = it; urlError = null },
+                    label = { Text("서버 주소 (https://...)") }, singleLine = true,
+                    isError = urlError != null, supportingText = urlError?.let { { Text(it) } },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = pidText, onValueChange = { pidText = it },
+                    label = { Text("참여자 ID (이름 대신 코드 권장)") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = tokenText, onValueChange = { tokenText = it },
+                    label = { Text("인증 토큰 (서버에서 요구하는 경우)") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                val uploadStatus = store.lastUploadStatus
+                Text(
+                    when {
+                        urlText.isBlank() -> "서버 전송: 꺼짐"
+                        uploadStatus.isNotEmpty() -> "서버 전송 상태: $uploadStatus"
+                        else -> "서버 전송: 설정됨, 아직 전송 전"
+                    }
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                     Button(onClick = {
+                        if (urlText.isNotBlank() && !urlText.trim().startsWith("https://")) {
+                            urlError = "https:// 로 시작하는 주소만 쓸 수 있어요"
+                            return@Button
+                        }
+                        if (urlText.isNotBlank() && pidText.isBlank()) {
+                            urlError = "참여자 ID 를 입력해 주세요"
+                            return@Button
+                        }
+                        store.serverUrl = urlText
+                        store.participantId = pidText
+                        store.serverToken = tokenText
                         store.targetSsid = ssidText
                         startServiceIfPermitted()
                         store.mergeGapMinutes = gapText.toIntOrNull() ?: PresenceStore.DEFAULT_GAP_MIN
                         refresh++
                     }) { Text("저장") }
-                    OutlinedButton(onClick = { store.clear(); refresh++ }) { Text("기록 삭제") }
+                    OutlinedButton(onClick = { store.clear(); store.uploadedThrough = -1L; refresh++ }) { Text("기록 삭제") }
                 }
+                OutlinedButton(
+                    onClick = { Uploader.maybeUpload(this@MainActivity, force = true) },
+                    enabled = Uploader.isConfigured(store),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) { Text("서버로 지금 전송") }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                     OutlinedButton(onClick = { share("재실 기록 내보내기", exportPresence(events, now)) }) {
                         Text("재실 기록 내보내기")

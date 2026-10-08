@@ -20,8 +20,8 @@ android {
         applicationId = "com.choon.presence"
         minSdk = 29
         targetSdk = 34
-        versionCode = 5
-        versionName = "0.2.0"
+        versionCode = 6
+        versionName = "0.3.0"
     }
 
     val storePath = signingValue("storeFile", "SIGNING_STORE_FILE")
@@ -56,4 +56,5 @@ dependencies {
     implementation("androidx.compose.ui:ui")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

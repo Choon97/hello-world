@@ -32,6 +32,7 @@ class WifiMonitorService : Service() {
             store.touchAlive()
             Diag.count(Diag.C.BEATS)
             Diag.flush(this@WifiMonitorService)
+            Uploader.maybeUpload(this@WifiMonitorService)
             handler.postDelayed(this, PresenceStore.HEARTBEAT_MILLIS)
         }
     }
@@ -82,7 +83,7 @@ class WifiMonitorService : Service() {
         ) {
             store.record(EventType.EXIT, last)
         }
-        handler.post(heartbeat)
+        handler.post(heartbeat)   // 첫 하트비트가 곧바로 전송도 시도한다
         cm.registerNetworkCallback(
             NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(),
             callback,
