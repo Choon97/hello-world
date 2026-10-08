@@ -28,6 +28,9 @@ class PayloadBuilderTest {
         assertEquals(1, json.getJSONArray("sessions").length())
         assertEquals(120, json.getJSONArray("sessions").getJSONObject(0).getInt("minutes"))
         assertFalse(json.toString().contains("ssid", ignoreCase = true))
+        assertFalse(json.getBoolean("partial"))
+        val mid = JSONObject(PayloadBuilder.build("lab-01", sum, zone, 10, "0.3.3", partial = true))
+        assertTrue(mid.getBoolean("partial"))
     }
 
     @Test fun emptyDayHasNullsAndEscapesIds() {

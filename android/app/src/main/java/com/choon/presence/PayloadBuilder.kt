@@ -14,6 +14,7 @@ object PayloadBuilder {
         zone: ZoneId,
         mergeGapMinutes: Int,
         appVersion: String,
+        partial: Boolean = false,
     ): String {
         val iso = DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone(zone)
         fun ts(ms: Long?) = if (ms == null) "null" else q(iso.format(Instant.ofEpochMilli(ms)))
@@ -31,6 +32,7 @@ object PayloadBuilder {
             append(""""lastExit":${ts(summary.lastExitMillis)},""")
             append(""""mergeGapMinutes":$mergeGapMinutes,""")
             append(""""appVersion":${q(appVersion)},""")
+            append(""""partial":$partial,""")
             append(""""sessions":[$sessions]""")
             append('}')
         }

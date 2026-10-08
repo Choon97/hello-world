@@ -219,10 +219,10 @@ class MainActivity : ComponentActivity() {
                     OutlinedButton(onClick = { store.clear(); store.uploadedThrough = -1L; refresh++ }) { Text("기록 삭제") }
                 }
                 OutlinedButton(
-                    onClick = { Uploader.maybeUpload(this@MainActivity, force = true) },
+                    onClick = { Uploader.maybeUpload(this@MainActivity, manual = true) },
                     enabled = Uploader.isConfigured(store),
                     modifier = Modifier.padding(top = 8.dp),
-                ) { Text("서버로 지금 전송") }
+                ) { Text("서버로 지금 전송 (오늘 포함)") }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                     OutlinedButton(onClick = { share("재실 기록 내보내기", exportPresence(events, now)) }) {
                         Text("재실 기록 내보내기")

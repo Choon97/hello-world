@@ -60,11 +60,22 @@ t('일별: 헤더와 한 줄(요일/시:분/첫귀가) 이 사람이 읽기 좋�
   assert.deepEqual(post(payload()), { ok: true });
   const d = sheets['일별'].rows;
   assert.equal(d.length, 2);
-  assert.equal(J(d[0]), J(['날짜', '요일', '참여자', '재실(분)', '재실(시:분)', '첫귀가', '마지막외출', '세션수', '앱버전', '수신시각']));
+  assert.equal(J(d[0]), J(['날짜', '요일', '참여자', '재실(분)', '재실(시:분)', '첫귀가', '마지막외출', '세션수', '앱버전', '수신시각', '상태']));
   const expectedWeekday = ['일', '월', '화', '수', '목', '금', '토'][new Date(Date.UTC(2026, 9, 7)).getUTCDay()];
   assert.equal(J(d[1].slice(0, 9)), J(['2026-10-07', expectedWeekday, 'lab-01', 432, '7:12', '08:12', '', 1, '0.3.1']));
+  assert.equal(d[1][10], '확정');
+  assert.equal(d[0][10], '상태');
   assert.equal(formats['일별!A:A'], '@');
   assert.equal(formats['일별!F:G'], '@');
+});
+t('수동 전송(partial)은 중간으로 표시되고, 다음날 확정값이 같은 줄을 덮어쓴다', () => {
+  const { sheets, post } = makeEnv();
+  post(payload({ partial: true, totalMinutes: 100 }));
+  assert.equal(sheets['일별'].rows[1][10], '중간');
+  post(payload({ partial: false, totalMinutes: 432 }));
+  assert.equal(sheets['일별'].rows.length, 2);
+  assert.equal(sheets['일별'].rows[1][3], 432);
+  assert.equal(sheets['일별'].rows[1][10], '확정');
 });
 t('세션: 세션 하나당 한 줄 (시작/종료는 HH:mm)', () => {
   const { sheets, post } = makeEnv();

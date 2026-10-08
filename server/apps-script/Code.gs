@@ -19,7 +19,7 @@ const DAILY = '일별';
 const SESSIONS = '세션';
 const SUMMARY = '요약';
 const GUIDE = '설명';
-const DAILY_HEADERS = ['날짜', '요일', '참여자', '재실(분)', '재실(시:분)', '첫귀가', '마지막외출', '세션수', '앱버전', '수신시각'];
+const DAILY_HEADERS = ['날짜', '요일', '참여자', '재실(분)', '재실(시:분)', '첫귀가', '마지막외출', '세션수', '앱버전', '수신시각', '상태'];
 const SESSION_HEADERS = ['날짜', '참여자', '시작', '종료', '길이(분)'];
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const PID_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -82,6 +82,7 @@ function setup() {
     [DAILY, '재실(분) / 재실(시:분)', '그날 지정한 와이파이에 연결돼 있던 시간(짧은 끊김은 합친 값)'],
     [DAILY, '첫귀가 / 마지막외출', '그날 처음 귀가한 시각 / 마지막으로 외출한 시각 (24시간제, 폰의 현지 시각). 어제부터 이어졌거나 아직 안 나갔으면 빈칸'],
     [DAILY, '세션수', '집에 머문 구간의 개수'],
+    [DAILY, '상태', '확정 = 하루가 끝난 뒤 자동(00:15) 전송된 값 / 중간 = 앱에서 수동 전송한 진행 중인 날(오늘). 다음날 00:15 에 확정값으로 덮어써짐'],
     [SESSIONS, '날짜 / 참여자 / 시작 / 종료 / 길이(분)', '집에 머문 구간 하나당 한 줄. 자정을 넘기면 날짜별로 잘려 있고 종료가 24:00 으로 표시됨'],
     [SUMMARY, '-', '날짜×참여자 재실 분 합계표 (자동 계산, 직접 수정하지 말 것)'],
     ['공통', '-', '앱이 하루가 끝난 뒤 어제 기록을 보내므로 오늘 날짜는 아직 없음. 같은 날짜가 다시 오면 덮어씀'],
@@ -127,6 +128,7 @@ function upsertDaily_(sheet, d) {
     date, weekday_(date), pid, d.totalMinutes, hhmm_(d.totalMinutes),
     hm_(d.firstEnter, date), hm_(d.lastExit, date),
     (d.sessions || []).length, String(d.appVersion || ''), new Date().toISOString(),
+    d.partial === true ? '중간' : '확정',
   ];
   const last = sheet.getLastRow();
   let target = -1;
