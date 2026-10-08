@@ -176,6 +176,7 @@ class MainActivity : ComponentActivity() {
                 OutlinedTextField(
                     value = urlText, onValueChange = { urlText = it; urlError = null },
                     label = { Text("서버 주소 (https://...)") }, singleLine = true,
+                    placeholder = { Text("구글 Apps Script 는 주소 끝에 ?token=값") },
                     isError = urlError != null, supportingText = urlError?.let { { Text(it) } },
                     modifier = Modifier.fillMaxWidth(),
                 )
