@@ -13,6 +13,15 @@
 ## 서버 주소(고정)
 서버(구글 시트 Apps Script) 주소는 빌드 시 `android/server.properties` 의 `SERVER_URL=` (또는 환경변수/CI 비밀값 `SERVER_URL`)로 앱에 내장한다. 앱 화면에서는 입력하지 않으며 `https://` 만 허용. 자세한 내용은 `server/apps-script/README.md`.
 
+## 참여자별 앱 만들기
+참여자 ID 와 집 와이파이 이름을 미리 채운 APK 를 만든다 (처음 설치한 폰의 입력칸에 기본값으로 채워지며 앱에서 바꿀 수 있다).
+```
+./build-participant.sh tb5 "SK_WiFiGIGA30FA_5G"
+```
+결과: `app/build/outputs/apk/debug/wifi-presence-v<버전>-tb5.apk`.
+이미 같은 앱이 깔린 폰에 덮어 설치하면 그 폰에 저장된 설정(SSID/참여자 ID)이 우선하므로 기본값은 적용되지 않는다.
+서버 주소는 `server.properties` 의 `SERVER_URL` 을 그대로 쓴다.
+
 ## 데이터 보관
 기기에는 최근 7일(+경계 하루) 이벤트만 보관하며 하루에 한 번 오래된 기록을 지운다. 진단 로그도 7일. 장기 보관은 서버(시트)에서 한다.
 

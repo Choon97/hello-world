@@ -21,6 +21,14 @@ val serverUrl: String = (serverProps.getProperty("SERVER_URL") ?: System.getenv(
 require(serverUrl.isEmpty() || serverUrl.startsWith("https://")) { "SERVER_URL 은 https:// 로 시작해야 합니다" }
 require(!serverUrl.contains('"') && !serverUrl.contains('\\') && !serverUrl.contains(' ')) { "SERVER_URL 에 쓸 수 없는 문자가 있습니다" }
 
+// 참여자별 기본값(처음 설치했을 때 입력칸에 미리 채워지는 값). 환경변수가 server.properties 보다 우선한다.
+fun buildValue(key: String, default: String): String =
+    (System.getenv(key)?.takeIf { it.isNotBlank() } ?: serverProps.getProperty(key)?.takeIf { it.isNotBlank() } ?: default).trim()
+val defaultSsid: String = buildValue("DEFAULT_SSID", "skyiptime5g0651")
+val defaultParticipantId: String = buildValue("DEFAULT_PARTICIPANT_ID", "")
+require(Regex("^[A-Za-z0-9_-]{0,64}$").matches(defaultParticipantId)) { "DEFAULT_PARTICIPANT_ID 는 영문/숫자/-/_ 64자 이내여야 합니다" }
+require(!defaultSsid.contains('"') && !defaultSsid.contains('\\')) { "DEFAULT_SSID 에 쓸 수 없는 문자(\" 또는 \\)가 있습니다" }
+
 android {
     namespace = "com.choon.presence"
     compileSdk = 34
@@ -29,9 +37,11 @@ android {
         applicationId = "com.choon.presence"
         minSdk = 29
         targetSdk = 34
-        versionCode = 12
-        versionName = "0.4.1"
+        versionCode = 13
+        versionName = "0.411"
         buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
+        buildConfigField("String", "DEFAULT_SSID", "\"$defaultSsid\"")
+        buildConfigField("String", "DEFAULT_PARTICIPANT_ID", "\"$defaultParticipantId\"")
     }
 
     val storePath = signingValue("storeFile", "SIGNING_STORE_FILE")

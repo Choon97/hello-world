@@ -10,7 +10,7 @@ class PresenceStore(context: Context) {
     private val prefs = appContext.getSharedPreferences("presence", Context.MODE_PRIVATE)
 
     var targetSsid: String
-        get() = prefs.getString(KEY_SSID, DEFAULT_SSID) ?: DEFAULT_SSID
+        get() = prefs.getString(KEY_SSID, BuildConfig.DEFAULT_SSID) ?: BuildConfig.DEFAULT_SSID
         set(v) = prefs.edit().putString(KEY_SSID, v.trim()).apply()
 
     var mergeGapMinutes: Int
@@ -18,7 +18,7 @@ class PresenceStore(context: Context) {
         set(v) = prefs.edit().putInt(KEY_GAP, v.coerceIn(0, 120)).apply()
 
     var participantId: String
-        get() = prefs.getString(KEY_PID, "") ?: ""
+        get() = prefs.getString(KEY_PID, BuildConfig.DEFAULT_PARTICIPANT_ID) ?: BuildConfig.DEFAULT_PARTICIPANT_ID
         set(v) = prefs.edit().putString(KEY_PID, v.trim()).apply()
 
     /** 서버에 전송 완료한 마지막 날짜(epochDay). -1 이면 아직 없음. */
@@ -101,7 +101,6 @@ class PresenceStore(context: Context) {
     }
 
     companion object {
-        const val DEFAULT_SSID = "skyiptime5g0651"
         const val DEFAULT_GAP_MIN = 10
         private const val KEY_PID = "participant_id"
         private const val KEY_UPLOADED = "uploaded_through"
