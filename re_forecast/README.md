@@ -43,3 +43,17 @@ python re_forecast_tool.py --data-dir ./data --start 2026-10-17 --end 2026-10-23
 
 - `RE_forecast_<기간>.xlsx`: 요약, 발전원별 지표, 일별·시간별 결과, 사전검증, 피처중요도, 사용데이터
 - `RE_forecast_<기간>.json`: 리포트·대시보드용 데이터
+
+## 변수 제외 시나리오 비교 (`ablation.py`)
+
+```bash
+python ablation.py --data-dir ./data --out ./outputs/ablation
+```
+
+변수 분류를 하나씩 빼고 같은 절차로 다시 학습·예측한 뒤 오차를 비교합니다. 같은 절차란 사전 검증으로 가중치·보정을 정하고, 3년 재학습 후 예측하는 것입니다.
+
+- **분류**: 태양광 9종(일사량·운량·기온·습도·강수·바람·태양고도·계절·시각), 풍력 6종(바람·기온·습도·기압·계절·시각)
+- **시나리오 수**: 각각 '전체'를 더해 태양광 10개, 풍력 7개
+- **풍력 기본 모델**: 습도를 쓰지 않습니다. 시나리오의 '습도 제외'가 기본 모델과 같은 구성입니다.
+- **시드 반복**: '전체'는 난수 시드 3개로 반복합니다. 그 흔들림 폭보다 큰 차이만 의미 있게 봅니다.
+- **출력**: `RE_ablation.xlsx`, `ablation_summary.csv`, `ablation_raw.csv`, `ablation_daily.csv`, `ablation_noise.json`
