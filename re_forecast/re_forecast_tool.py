@@ -24,6 +24,7 @@ import io
 import json
 import os
 import warnings
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -60,6 +61,36 @@ SOLAR_VARS = ['shortwave_radiation', 'direct_radiation', 'diffuse_radiation', 't
 WIND_VARS = ['wind_speed_100m', 'wind_direction_100m', 'wind_speed_10m', 'wind_direction_10m',
              'temperature_2m', 'surface_pressure', 'relative_humidity_2m']
 CENTER = (36.3, 127.8)
+
+# 변수 분류 (시나리오 비교 단위). 태양광 9종, 풍력 6종
+GROUPS = {'solar': ['일사량', '운량', '기온', '습도', '강수', '바람', '태양고도', '계절', '시각'],
+          'wind': ['바람', '기온', '습도', '기압', '계절', '시각']}
+# 기본 모델: 풍력은 습도 미사용 (최초 리포트와 동일한 구성)
+DEFAULT_DROP = {'wind': ('습도',)}
+
+
+def feature_group(src, col):
+    """피처 컬럼 → 변수 분류"""
+    if col in ('hour', 'hr_s', 'hr_c'):
+        return '시각'
+    if col in ('doy_s', 'doy_c'):
+        return '계절'
+    if src == 'solar':
+        if col in ('cosz', 'clear_sky'):
+            return '태양고도'
+        if col.startswith('nat_'):
+            v = col[4:]
+            return {'shortwave_radiation': '일사량', 'direct_radiation': '일사량', 'diffuse_radiation': '일사량',
+                    'kt': '일사량', 'cloud_cover': '운량', 'temperature_2m': '기온',
+                    'relative_humidity_2m': '습도', 'precipitation': '강수', 'wind_speed_10m': '바람'}[v]
+        return {'sw': '일사량', 'dif': '일사량', 'cc': '운량'}[col.rsplit('_', 1)[1]]
+    if col.startswith('dp_') or col.endswith('_ps'):
+        return '기압'
+    if col.endswith('_t'):
+        return '기온'
+    if col.endswith('_rh'):
+        return '습도'
+    return '바람'
 
 
 def log(msg):
@@ -262,6 +293,7 @@ def wind_features(wx, idx, gw):
             F[f'{p}_shear'] = v / np.maximum(d['wind_speed_10m'].values, 0.5)
             F[f'{p}_t'] = d['temperature_2m'].values
             F[f'{p}_ps'] = d['surface_pressure'].values
+            F[f'{p}_rh'] = d['relative_humidity_2m'].values
             F[f'{p}_pc'] = power_curve(v)
             pcs.append(F[f'{p}_pc'].values)
             ws.append(v)
@@ -340,9 +372,11 @@ def fit_mlp(X, y):
 class SourceModel:
     """한 발전원(태양광/풍력)의 학습·예측 단위: z = y / 용량지수 를 학습"""
 
-    def __init__(self, src, n_iter=None):
+    def __init__(self, src, n_iter=None, drop=(), quantiles=True):
         self.src = src
         self.n_iter = n_iter
+        self.drop = tuple(drop)
+        self.quantiles = quantiles
 
     def _mask(self, F):
         return (F['clear_sky'] > 0).values if self.src == 'solar' else np.ones(len(F), bool)
@@ -350,8 +384,8 @@ class SourceModel:
     def fit(self, F, y, cap, es_days=60):
         z = (y / cap).replace([np.inf, -np.inf], np.nan)
         ok = z.notna().values & self._mask(F) & F.notna().mean(axis=1).gt(0.8).values
-        X, z = F[ok], z[ok]
-        self.cols = list(F.columns)
+        self.cols = [c for c in F.columns if feature_group(self.src, c) not in self.drop]
+        X, z = F.loc[ok, self.cols], z[ok]
         self.med = X.median()
         if self.n_iter is None:                           # 마지막 es_days 로 조기종료 → 반복수 결정
             cut = X.index.max() - pd.Timedelta(days=es_days)
@@ -359,8 +393,11 @@ class SourceModel:
             m = fit_gbm(X[tr], z[tr], X[es], z[es])
             self.n_iter = max(200, int(best_iter(m, 1500) * 1.1))
         self.gbm = fit_gbm(X, z, n_estimators=self.n_iter)
-        self.q10 = fit_gbm(X, z, objective='quantile', alpha=0.1, n_estimators=self.n_iter)
-        self.q90 = fit_gbm(X, z, objective='quantile', alpha=0.9, n_estimators=self.n_iter)
+        if self.quantiles:
+            self.q10 = fit_gbm(X, z, objective='quantile', alpha=0.1, n_estimators=self.n_iter)
+            self.q90 = fit_gbm(X, z, objective='quantile', alpha=0.9, n_estimators=self.n_iter)
+        else:                                             # 시나리오 비교용: 구간 모델 생략
+            self.q10 = self.q90 = self.gbm
         self.mlp = fit_mlp(X, z)
         self.zmax = float(np.nanquantile(z, 0.999)) * 1.1
         return self
@@ -402,8 +439,8 @@ def metrics(y, p, cap_mw):
 # =====================================================================================
 # 5. 실행
 # =====================================================================================
-def run(data_dir, start, end, train_years, out_dir):
-    os.makedirs(out_dir, exist_ok=True)
+def prepare(data_dir, start, end, train_years):
+    """데이터 적재·정답값·기상 피처 준비 (시나리오 간 공유)"""
     start, end = pd.Timestamp(start), pd.Timestamp(end)
     issue = start                                              # 예측 시작 거래일 0시 = 정보 차단 시점
     t0 = issue - pd.DateOffset(years=train_years)              # 학습 시작
@@ -458,90 +495,112 @@ def run(data_dir, start, end, train_years, out_dir):
     tr_idx = hidx[hidx <= v0]
     log(f'[3] 사전 검증  학습 ~{v0 - pd.Timedelta(days=1):%Y-%m-%d} / 검증 {v0:%Y-%m-%d} ~ {issue - pd.Timedelta(days=1):%Y-%m-%d} (실제 발표 예보 D-1·D-2 입력)')
 
-    res = {'meta': {}, 'val': {}, 'fc': {}, 'imp': {}, 'hind': {}}
-    FINAL = {}
     PREV = {(m, l): weather_set(B, 'prev', m, l) for m in NWP_MODELS for l in ('d1', 'd2')}
     SING = {m: merge_weather(weather_set(B, 'single', m), PREV[(m, 'd1')]) for m in NWP_MODELS}
 
+    return SimpleNamespace(**{k: v for k, v in locals().items()})
+
+
+def model_source(C, s, drop=(), quantiles=True):
+    """한 발전원: 사전검증(가중·보정 결정) → 3년 재학습 → 예측. drop = 제외할 변수 분류"""
+    F_arch, Y, CI, FEAT, PREV, SING = C.F_arch, C.Y, C.CI, C.FEAT, C.PREV, C.SING
+    tr_idx, vidx, v0, hidx, fidx, issue = C.tr_idx, C.vidx, C.v0, C.hidx, C.fidx, C.issue
+    R = {}
+    cap_tr = cap_at(CI[s], tr_idx)
+    M = SourceModel(s, drop=drop, quantiles=quantiles).fit(F_arch[s].loc[tr_idx], Y[s].loc[tr_idx], cap_tr)
+    cap_v = pd.Series(cap_at(CI[s], pd.DatetimeIndex([v0 + pd.Timedelta(hours=1)])).iloc[0], index=vidx)
+    yv = Y[s].loc[vidx]
+    val = {'archive': M.predict(F_arch[s].loc[vidx], cap_v)}
+    for (m, l), wx in PREV.items():
+        val[f'{m}|{l}'] = M.predict(FEAT[s](wx, vidx), cap_v)
+    # NWP 모델 가중: D-1 예보 GBM 의 MAE 역수
+    mae = {m: (val[f'{m}|d1']['gbm'] - yv).abs().mean() for m in NWP_MODELS}
+    wm = {m: 1 / mae[m] for m in NWP_MODELS}
+    tot = sum(wm.values())
+    wm = {m: v / tot for m, v in wm.items()}
+
+    def nwp_mix(lead, col):
+        return sum(wm[m] * val[f'{m}|{lead}'][col] for m in NWP_MODELS)
+    # GBM·MLP 앙상블 가중 (NNLS, D-1·D-2 예보 입력)
+    A = np.vstack([np.r_[nwp_mix('d1', c).values, nwp_mix('d2', c).values] for c in ('gbm', 'mlp')]).T
+    b = np.r_[yv.values, yv.values]
+    ok = ~np.isnan(b) & ~np.isnan(A).any(axis=1)
+    wa, _ = nnls(A[ok], b[ok])
+    wa = wa / wa.sum() if wa.sum() > 0 else np.array([1.0, 0.0])
+    ens = {lead: wa[0] * nwp_mix(lead, 'gbm') + wa[1] * nwp_mix(lead, 'mlp') for lead in ('d1', 'd2')}
+    # 수준 보정(MOS): 재분석 학습 ↔ 예보 입력 간 계통편차
+    bias = float(np.clip(yv.sum() / pd.concat([ens['d1'], ens['d2']]).groupby(level=0).mean()
+                         .reindex(yv.dropna().index).sum(), 0.85, 1.2))
+    # P10/P90 구간 보정 (CQR): 예보 입력 기준 커버리지 80% 목표
+    q10 = nwp_mix('d1', 'q10') * bias
+    q90 = nwp_mix('d1', 'q90') * bias
+    E = np.maximum(q10 - yv, yv - q90).dropna()
+    if s == 'solar':
+        E = E[F_arch[s].loc[E.index, 'clear_sky'] > 0]
+    cqr = float(np.quantile(E, 0.8))
+    capmw = float(np.nanquantile(Y[s].loc[hidx], 0.999))
+    R['val'] = {
+        'NWP가중': wm, '앙상블가중': {'GBM': wa[0], 'MLP': wa[1]}, '수준보정': bias, 'CQR': cqr,
+        'table': pd.DataFrame({
+            '재분석기상(모델성능)': metrics(yv, val['archive']['gbm'], capmw),
+            **{f'{m} D-1 GBM': metrics(yv, val[f'{m}|d1']['gbm'], capmw) for m in NWP_MODELS},
+            '앙상블 D-1(보정)': metrics(yv, ens['d1'] * bias, capmw),
+            '앙상블 D-2(보정)': metrics(yv, ens['d2'] * bias, capmw)}).T,
+        'series': pd.DataFrame({'actual': yv, 'pred_d1': ens['d1'] * bias, 'pred_archive': val['archive']['gbm']})}
+
+    # ---------------- 최종 학습 (3년 전체) → 예측 ----------------
+    cap_all = cap_at(CI[s], hidx)
+    Mf = SourceModel(s, n_iter=M.n_iter, drop=drop, quantiles=quantiles).fit(F_arch[s], Y[s], cap_all)
+    cap_issue = CI[s].dropna().iloc[-1]                              # 예측 직전 용량지수 (고정)
+    cap_f = pd.Series(cap_issue, index=fidx)
+    P = {m: Mf.predict(FEAT[s](SING[m], fidx), cap_f) for m in NWP_MODELS}
+    mix = lambda c: sum(wm[m] * P[m][c] for m in NWP_MODELS)
+    p50 = (wa[0] * mix('gbm') + wa[1] * mix('mlp')) * bias
+    lo = (mix('q10') * bias - cqr).clip(lower=0)
+    hi = mix('q90') * bias + cqr
+    if s == 'solar':
+        night = FEAT[s](SING[NWP_MODELS[0]], fidx)['clear_sky'].values <= 0
+        lo[night] = 0
+        hi[night] = 0
+    lo, hi = np.minimum(lo, p50), np.maximum(hi, p50)
+    # 일 단위 롤링 D-1 예보 (매일 전날 발표 예보로 그날 예측)
+    P1 = {m: Mf.predict(FEAT[s](PREV[(m, 'd1')], fidx), cap_f) for m in NWP_MODELS}
+    mix1 = lambda c: sum(wm[m] * P1[m][c] for m in NWP_MODELS)
+    p_d1 = (wa[0] * mix1('gbm') + wa[1] * mix1('mlp')) * bias
+    # 기준(베이스라인) 예측: 실측은 예측 시작 전까지만 사용
+    hist = Y[s].loc[:issue]
+    last_day = hist.iloc[-24:].values
+    persist = pd.Series(np.tile(last_day, len(fidx) // 24), index=fidx)
+    prof = hist.iloc[-24 * 7:].groupby(hist.iloc[-24 * 7:].index.hour).mean()
+    avg7 = pd.Series(prof.reindex(fidx.hour).values, index=fidx)
+    R['fc'] = pd.DataFrame({'AI예측(P50)': p50, 'P10': lo, 'P90': hi, 'AI_D-1롤링': p_d1,
+                                 **{f'NWP_{m}': (wa[0] * P[m]['gbm'] + wa[1] * P[m]['mlp']) * bias
+                                    for m in NWP_MODELS},
+                                 '기준_전일지속': persist, '기준_7일평균': avg7})
+    R['imp'] = Mf.importance()
+    R['final'] = (Mf, cap_f, wa, bias)
+    R['meta'] = {'cap_index': float(cap_issue), 'capMW': capmw, 'n_iter': M.n_iter,
+                      'train_rows': int(Y[s].notna().sum())}
+    return R
+
+
+def run(data_dir, start, end, train_years, out_dir, drop=None):
+    os.makedirs(out_dir, exist_ok=True)
+    C = prepare(data_dir, start, end, train_years)
+    drop = DEFAULT_DROP if drop is None else drop
+    res = {'meta': {}, 'val': {}, 'fc': {}, 'imp': {}, 'hind': {}}
+    FINAL = {}
     for s in SOURCES:
         log(f'  - {SRC_KO[s]}')
-        cap_tr = cap_at(CI[s], tr_idx)
-        M = SourceModel(s).fit(F_arch[s].loc[tr_idx], Y[s].loc[tr_idx], cap_tr)
-        cap_v = pd.Series(cap_at(CI[s], pd.DatetimeIndex([v0 + pd.Timedelta(hours=1)])).iloc[0], index=vidx)
-        yv = Y[s].loc[vidx]
-        val = {'archive': M.predict(F_arch[s].loc[vidx], cap_v)}
-        for (m, l), wx in PREV.items():
-            val[f'{m}|{l}'] = M.predict(FEAT[s](wx, vidx), cap_v)
-        # NWP 모델 가중: D-1 예보 GBM 의 MAE 역수
-        mae = {m: (val[f'{m}|d1']['gbm'] - yv).abs().mean() for m in NWP_MODELS}
-        wm = {m: 1 / mae[m] for m in NWP_MODELS}
-        tot = sum(wm.values())
-        wm = {m: v / tot for m, v in wm.items()}
-
-        def nwp_mix(lead, col):
-            return sum(wm[m] * val[f'{m}|{lead}'][col] for m in NWP_MODELS)
-        # GBM·MLP 앙상블 가중 (NNLS, D-1·D-2 예보 입력)
-        A = np.vstack([np.r_[nwp_mix('d1', c).values, nwp_mix('d2', c).values] for c in ('gbm', 'mlp')]).T
-        b = np.r_[yv.values, yv.values]
-        ok = ~np.isnan(b) & ~np.isnan(A).any(axis=1)
-        wa, _ = nnls(A[ok], b[ok])
-        wa = wa / wa.sum() if wa.sum() > 0 else np.array([1.0, 0.0])
-        ens = {lead: wa[0] * nwp_mix(lead, 'gbm') + wa[1] * nwp_mix(lead, 'mlp') for lead in ('d1', 'd2')}
-        # 수준 보정(MOS): 재분석 학습 ↔ 예보 입력 간 계통편차
-        bias = float(np.clip(yv.sum() / pd.concat([ens['d1'], ens['d2']]).groupby(level=0).mean()
-                             .reindex(yv.dropna().index).sum(), 0.85, 1.2))
-        # P10/P90 구간 보정 (CQR): 예보 입력 기준 커버리지 80% 목표
-        q10 = nwp_mix('d1', 'q10') * bias
-        q90 = nwp_mix('d1', 'q90') * bias
-        E = np.maximum(q10 - yv, yv - q90).dropna()
-        if s == 'solar':
-            E = E[F_arch[s].loc[E.index, 'clear_sky'] > 0]
-        cqr = float(np.quantile(E, 0.8))
-        capmw = float(np.nanquantile(Y[s].loc[hidx], 0.999))
-        res['val'][s] = {
-            'NWP가중': wm, '앙상블가중': {'GBM': wa[0], 'MLP': wa[1]}, '수준보정': bias, 'CQR': cqr,
-            'table': pd.DataFrame({
-                '재분석기상(모델성능)': metrics(yv, val['archive']['gbm'], capmw),
-                **{f'{m} D-1 GBM': metrics(yv, val[f'{m}|d1']['gbm'], capmw) for m in NWP_MODELS},
-                '앙상블 D-1(보정)': metrics(yv, ens['d1'] * bias, capmw),
-                '앙상블 D-2(보정)': metrics(yv, ens['d2'] * bias, capmw)}).T,
-            'series': pd.DataFrame({'actual': yv, 'pred_d1': ens['d1'] * bias, 'pred_archive': val['archive']['gbm']})}
-
-        # ---------------- 최종 학습 (3년 전체) → 예측 ----------------
-        cap_all = cap_at(CI[s], hidx)
-        Mf = SourceModel(s, n_iter=M.n_iter).fit(F_arch[s], Y[s], cap_all)
-        cap_issue = CI[s].dropna().iloc[-1]                              # 예측 직전 용량지수 (고정)
-        cap_f = pd.Series(cap_issue, index=fidx)
-        P = {m: Mf.predict(FEAT[s](SING[m], fidx), cap_f) for m in NWP_MODELS}
-        mix = lambda c: sum(wm[m] * P[m][c] for m in NWP_MODELS)
-        p50 = (wa[0] * mix('gbm') + wa[1] * mix('mlp')) * bias
-        lo = (mix('q10') * bias - cqr).clip(lower=0)
-        hi = mix('q90') * bias + cqr
-        if s == 'solar':
-            night = FEAT[s](SING[NWP_MODELS[0]], fidx)['clear_sky'].values <= 0
-            lo[night] = 0
-            hi[night] = 0
-        lo, hi = np.minimum(lo, p50), np.maximum(hi, p50)
-        # 일 단위 롤링 D-1 예보 (매일 전날 발표 예보로 그날 예측)
-        P1 = {m: Mf.predict(FEAT[s](PREV[(m, 'd1')], fidx), cap_f) for m in NWP_MODELS}
-        mix1 = lambda c: sum(wm[m] * P1[m][c] for m in NWP_MODELS)
-        p_d1 = (wa[0] * mix1('gbm') + wa[1] * mix1('mlp')) * bias
-        # 기준(베이스라인) 예측: 실측은 예측 시작 전까지만 사용
-        hist = Y[s].loc[:issue]
-        last_day = hist.iloc[-24:].values
-        persist = pd.Series(np.tile(last_day, len(fidx) // 24), index=fidx)
-        prof = hist.iloc[-24 * 7:].groupby(hist.iloc[-24 * 7:].index.hour).mean()
-        avg7 = pd.Series(prof.reindex(fidx.hour).values, index=fidx)
-        res['fc'][s] = pd.DataFrame({'AI예측(P50)': p50, 'P10': lo, 'P90': hi, 'AI_D-1롤링': p_d1,
-                                     **{f'NWP_{m}': (wa[0] * P[m]['gbm'] + wa[1] * P[m]['mlp']) * bias
-                                        for m in NWP_MODELS},
-                                     '기준_전일지속': persist, '기준_7일평균': avg7})
-        res['imp'][s] = Mf.importance()
-        FINAL[s] = (Mf, cap_f, wa, bias)
-        res['meta'][s] = {'cap_index': float(cap_issue), 'capMW': capmw, 'n_iter': M.n_iter,
-                          'train_rows': int(Y[s].notna().sum())}
-        res['meta']['wind_note'] = wind_note
-        res['meta']['k_wind'] = k_wind
+        R = model_source(C, s, drop=drop.get(s, ()))
+        for k in ('val', 'fc', 'imp', 'meta'):
+            res[k][s] = R[k]
+        FINAL[s] = R['final']
+    res['meta']['wind_note'] = C.wind_note
+    res['meta']['k_wind'] = C.k_wind
+    B, FEAT, fidx, Y5_all, inv = C.B, C.FEAT, C.fidx, C.Y5_all, C.inv
+    t0, issue, v0, start, end = C.t0, C.issue, C.v0, C.start, C.end
+    w_pts, gw = C.w_pts, C.gw
 
     # 예측 저장 후에만: 예측기간 '관측 기상(ERA5)'으로 사후예측 → 오차 분해용 (예측 성능 아님, 발전 실측 미사용)
     WX_full = weather_set(B, 'archive')
